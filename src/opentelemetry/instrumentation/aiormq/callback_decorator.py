@@ -34,7 +34,8 @@ class CallbackDecorator:
         builder.set_operation(MessagingOperationValues.RECEIVE)
         builder.set_destination(message.exchange or message.routing_key)
         builder.set_channel(self._channel)
-        builder.set_message(message)
+        if message.header is not None:
+            builder.set_properties(message.header.properties)
         return builder.build()
 
     def decorate(

@@ -36,14 +36,15 @@ class AioRmqInstrumentor(BaseInstrumentor):
     def _instrument_consume(tracer: Tracer):
         async def wrapper(wrapped, instance, args, kwargs):
             async def basic_consume(
-                consumer_callback: ConsumerCallback,
-                *fargs,
-                **fkwargs,
+                    queue: str,
+                    consumer_callback: ConsumerCallback,
+                    *fargs,
+                    **fkwargs,
             ):
                 decorated_callback = CallbackDecorator(
                     tracer, instance
                 ).decorate(consumer_callback)
-                return await wrapped(decorated_callback, *fargs, **fkwargs)
+                return await wrapped(queue=queue, consumer_callback=decorated_callback, *fargs, **fkwargs)
 
             return await basic_consume(*args, **kwargs)
 

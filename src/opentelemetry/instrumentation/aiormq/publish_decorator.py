@@ -16,10 +16,10 @@ from typing import Callable, Optional
 from opentelemetry import propagate, trace
 from opentelemetry.instrumentation.aiormq.span_builder import SpanBuilder
 from opentelemetry.trace import Span, Tracer
+from pamqp import commands as spec
 
 import aiormq
 from aiormq import Channel
-from aiormq.abc import DeliveredMessage
 
 
 class PublishDecorator:
@@ -28,28 +28,32 @@ class PublishDecorator:
         self._channel = channel
 
     def _get_publish_span(
-            self, message: DeliveredMessage, routing_key: str, exchange: str
+            self,
+            exchange: str = "",
+            routing_key: str = "",
+            properties: Optional[spec.Basic.Properties] = None,
     ) -> Optional[Span]:
         builder = SpanBuilder(self._tracer)
         builder.set_as_producer()
         builder.set_destination(f"{exchange},{routing_key}")
         builder.set_channel(self._channel)
-        builder.set_message(message)
+        builder.set_properties(properties)
         return builder.build()
 
     def decorate(self, basic_publish: Callable) -> Callable:
         async def decorated_basic_publish(
-                message: DeliveredMessage, routing_key: str, exchange: str, **kwargs
+                exchange: str = "",
+                routing_key: str = "",
+                properties: Optional[spec.Basic.Properties] = None,
+                **kwargs
         ) -> Optional[aiormq.abc.ConfirmationFrameType]:
-            span = self._get_publish_span(messgae=message, routing_key=routing_key, exchange=exchange)
+            span = self._get_publish_span(properties=properties, routing_key=routing_key, exchange=exchange)
             if not span:
-                return await basic_publish(message, routing_key, **kwargs)
+                return await basic_publish(properties=properties, routing_key=routing_key, exchange=exchange, **kwargs)
             with trace.use_span(span, end_on_exit=True):
-                if message.header:
-                    properties = message.header.properties
+                if properties is not None:
                     propagate.inject(properties.headers)
-
-                return_value = await basic_publish(message=message, routing_key=routing_key, exchange=exchange, **kwargs)
+                return_value = await basic_publish(properties=properties, routing_key=routing_key, exchange=exchange, **kwargs)
             return return_value
 
         return decorated_basic_publish

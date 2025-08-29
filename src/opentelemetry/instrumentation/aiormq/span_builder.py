@@ -11,12 +11,14 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import json
 from typing import Optional
 
 from opentelemetry.instrumentation.utils import is_instrumentation_enabled
 from opentelemetry.semconv.trace import (MessagingOperationValues,
                                          SpanAttributes)
 from opentelemetry.trace import Span, SpanKind, Tracer
+from pamqp import commands as spec
 
 from aiormq import Channel
 from aiormq.abc import DeliveredMessage
@@ -31,6 +33,7 @@ class SpanBuilder:
         self._operation: MessagingOperationValues = None
         self._kind: SpanKind = None
         self._destination: str = None
+        self._properties: Optional[spec.Basic.Properties] = None
 
     def set_as_producer(self):
         self._kind = SpanKind.PRODUCER
@@ -55,18 +58,22 @@ class SpanBuilder:
             }
         )
 
-    def set_message(self, message: DeliveredMessage):
-        if message.header is None:
+    def set_properties(self, properties: Optional[spec.Basic.Properties] = None):
+        self._properties = properties
+        if self._properties is None:
             return
 
-        properties = message.header.properties
-        if properties.message_id:
+        self._attributes["rabbitmq.headers"] = (
+            json.dumps(properties.headers)
+        )
+
+        if self._properties.message_id:
             self._attributes[SpanAttributes.MESSAGING_MESSAGE_ID] = (
-                properties.message_id
+                self._properties.message_id
             )
-        if properties.correlation_id:
+        if self._properties.correlation_id:
             self._attributes[SpanAttributes.MESSAGING_CONVERSATION_ID] = (
-                properties.correlation_id
+                self._properties.correlation_id
             )
 
     def build(self) -> Optional[Span]:
